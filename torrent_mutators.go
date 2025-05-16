@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 )
@@ -14,6 +15,30 @@ import (
 	Torrent Mutators
     https://github.com/transmission/transmission/blob/4.0.3/docs/rpc-spec.md#32-torrent-mutator-torrent-set
 */
+// Compact replaces consecutive runs of equal elements with a single copy.
+// This is like the uniq command found on Unix.
+// Compact modifies the contents of the slice s and returns the modified slice,
+// which may have a smaller length.
+// Compact zeroes the elements between the new length and the original length.
+// todo replace to slices.Compact on version 1.21
+func compact[S ~[]E, E comparable](s S) S {
+	if len(s) < 2 {
+		return s
+	}
+	for k := 1; k < len(s); k++ {
+		if s[k] == s[k-1] {
+			s2 := s[k:]
+			for k2 := 1; k2 < len(s2); k2++ {
+				if s2[k2] != s2[k2-1] {
+					s[k] = s2[k2]
+					k++
+				}
+			}
+			return s[:k]
+		}
+	}
+	return s
+}
 
 // TorrentSet apply a list of mutator(s) to a list of torrent ids.
 func (c *Client) TorrentSet(ctx context.Context, payload TorrentSetPayload) (err error) {
@@ -21,6 +46,9 @@ func (c *Client) TorrentSet(ctx context.Context, payload TorrentSetPayload) (err
 	if len(payload.IDs) == 0 {
 		return errors.New("there must be at least one ID")
 	}
+	//fix trackers
+	sort.Strings(payload.TrackerList)
+	payload.TrackerList = compact(payload.TrackerList)
 	// Send payload
 	if err = c.rpcCall(ctx, "torrent-set", payload, nil); err != nil {
 		err = fmt.Errorf("'torrent-set' rpc method failed: %w", err)
